@@ -12,7 +12,6 @@ struct alloc {
 };
 
 int main(int argc, char *argv[]){
-
     char *s;
     s = mymalloc(10);
     s = "poo\0";
@@ -28,11 +27,14 @@ int mymalloc(int bytes){
         bytes = bytes + (1024 - (bytes % 1024));
     }
     int addr = sbrk(bytes);
+    //increment addr by however much space there needs
+    //  to be for alloc struct
     printf("%p\n", (void *)&addr);
 
     return addr;
 }
 
 void free(void *ptr){
-
+    //given memory address ptr, change alloc struct
+    //  so that it is free'd
 }
