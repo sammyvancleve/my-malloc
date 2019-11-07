@@ -3,8 +3,11 @@
 #include <stdint.h>
 #include <string.h>
 
+#define BOUNDARY 16
+#define BOOKKEEPING_SIZE 16
+
 void *mymalloc(int bytes);
-void free(void *ptr);
+void myfree(void *ptr);
 static void *allocstart;
 
 //16 bytes long
@@ -15,29 +18,31 @@ struct allocation {
 
 int main(int argc, char *argv[]){
     char *s;
-    s = mymalloc(51);
-    *s = "Homer's BBBQ\0";
-    free(s);
+    s = mymalloc(70);
+    printf("agh %p\n", s);
+    strcpy(s, "Homer's bbbq\0");
+    printf("agh %p\n", s);
+    printf("%s\n", s);
+    myfree(s);
     char *t;
     t = mymalloc(50);
-    *t = "The extra B is for BYOBB\0";
+    strcpy(t, "The extra B is for BYOBB");
     printf("%s\n", s);
     printf("%s\n", t);
 }
 
+//returns pointer of type void *
 void *mymalloc(int bytes){
     void *currentbreak = sbrk(0);
-    if (bytes % 16 != 0) {
-        bytes = bytes + (16 - (bytes % 16));
+    if (bytes % BOUNDARY != 0) {
+        bytes = bytes + (BOUNDARY - (bytes % BOUNDARY));
     }
     if (allocstart != NULL){
         struct allocation *checkalloc = allocstart;
-        printf("checkalloc free %ld offset %ld\n", (*checkalloc).free,
-        (*checkalloc).offset);
         while (checkalloc < currentbreak){
-            if (((*checkalloc).free = 1) && (*checkalloc).offset < bytes + 16){
-                checkalloc->free = 0;
-                return checkalloc + 16;
+            if (((*checkalloc).free = 1) && (*checkalloc).offset > bytes + 16){
+                (*checkalloc).free = 0;
+                return (void *)checkalloc + BOOKKEEPING_SIZE;
             } else{
                 checkalloc += (*checkalloc).offset;
             }
@@ -53,15 +58,15 @@ void *mymalloc(int bytes){
         memset(addr, 0, breaksize);
         struct allocation *alloc = addr;
         (*alloc).free = 0;
-        (*alloc).offset = bytes + 16;
-        printf("address is %p\n", addr);
-        return addr + 16;
+        (*alloc).offset = bytes + BOOKKEEPING_SIZE;
+        return addr + BOOKKEEPING_SIZE;
     } else {
         return NULL;
     }
 }
 
-void free(void *ptr){
-    uint64_t *free = ptr-16;
+void myfree(void *ptr){
+    void *loc = ptr;
+    uint64_t *free = loc-BOOKKEEPING_SIZE;
     *free = 1;
 }
