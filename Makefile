@@ -7,4 +7,4 @@ test-malloc: test-malloc.c
 .PHONY: testls
 
 testls:
-	gdb --args env LD_PRELOAD=./my-malloc.so ls
+	gdb --args env LD_PRELOAD=./my-malloc.so ls -l
