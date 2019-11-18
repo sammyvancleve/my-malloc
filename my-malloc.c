@@ -2,15 +2,13 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdlib.h>
 
 #define BOUNDARY 16 
 #define BOOK_SIZE 16
 
-void *malloc(size_t bytes);
-void free(void *ptr);
-void *calloc(size_t nmemb, size_t size);
-void *realloc(void *ptr, size_t size);
 static void *allocstart;
+static void *currentbreak;
 
 //16 bytes long
 struct allocation {
@@ -19,7 +17,6 @@ struct allocation {
 };
 
 void *malloc(size_t bytes){
-    void *currentbreak = sbrk(0);
     void *addr;
     //round up size of alloc so it is on boundary
     if (bytes % BOUNDARY != 0) {
@@ -51,16 +48,18 @@ void *malloc(size_t bytes){
             checkalloc += (*checkalloc).offset;
         }
     }
-    if((addr = sbrk(bytes*4)) != (void *) -1) {
+    if((addr = sbrk(bytes*8)) != (void *) -1) {
         //set allocstart if first time calling malloc
         if (allocstart == NULL){
             allocstart = addr;
         }
-
+        currentbreak = sbrk(0);
+        //allocation to be returned
         struct allocation *alloc = addr;
         (*alloc).free = 0;
         (*alloc).offset = bytes + BOOK_SIZE;
 
+        //allocation following
         void *nextallocaddr = (char *)addr + BOOK_SIZE +
             (*alloc).offset;
         struct allocation *nextalloc = nextallocaddr;
