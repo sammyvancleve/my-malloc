@@ -24,47 +24,59 @@ void *malloc(size_t bytes){
     }
     if (allocstart != NULL) {
         size_t allocsize = bytes + BOOK_SIZE;
-        struct allocation *checkalloc = allocstart;
-        while ((void *)checkalloc < currentbreak) {
-            if ((*checkalloc).free == 1) {
-                if ((*checkalloc).offset > allocsize) {
-                    (*checkalloc).free = 0;
-                    addr = (char *)checkalloc + BOOK_SIZE;
+        void *check;
+        check = allocstart;
+        struct allocation *checkalloc;
+        while (check < currentbreak) {
+            checkalloc = check;
+            if (checkalloc->free == 1) {
+                if (checkalloc->offset > allocsize) {
+                    checkalloc->free = 0;
+                    addr = check + BOOK_SIZE;
                     return addr;
                 }
-                else if ((int *)(*checkalloc).offset == NULL) {
-                    if ((void *)(checkalloc + allocsize) < currentbreak) {
-                        (*checkalloc).free = 0;
-                        addr = (char *)checkalloc + BOOK_SIZE;
-                        return addr;
+                else if ((uint64_t *)(*checkalloc).offset == NULL) {
+                    if ((check + allocsize + sizeof(checkalloc)) < currentbreak) {
+                        addr = check;
+                        checkalloc->free = 0;
+                        checkalloc->offset = allocsize;
+
+                        //allocation following
+                        void *nextallocaddr = addr + checkalloc->offset;
+                        struct allocation *nextalloc = nextallocaddr;
+                        nextalloc->free = 1;
+                        nextalloc->offset = (uint64_t)NULL;
+
+                        return addr + BOOK_SIZE;
                     } else {
                         break;
                     }
                 }
             }
-            else if ((int *)(*checkalloc).offset == NULL) {
+            //if its free and theres no offset
+            else if ((uint64_t*)(*checkalloc).offset == NULL) {
                 break;
             }
-            checkalloc += (*checkalloc).offset;
+            check = check + checkalloc->offset;
         }
     }
-    if((addr = sbrk(bytes*8)) != (void *) -1) {
+    if((addr = sbrk(bytes+10240)) != (void *) -1) {
         //set allocstart if first time calling malloc
         if (allocstart == NULL){
             allocstart = addr;
         }
         currentbreak = sbrk(0);
+
         //allocation to be returned
         struct allocation *alloc = addr;
-        (*alloc).free = 0;
-        (*alloc).offset = bytes + BOOK_SIZE;
+        alloc->free = 0;
+        alloc->offset = bytes + BOOK_SIZE;
 
         //allocation following
-        void *nextallocaddr = (char *)addr + BOOK_SIZE +
-            (*alloc).offset;
+        void *nextallocaddr = (char *)addr + alloc->offset;
         struct allocation *nextalloc = nextallocaddr;
-        (*nextalloc).free = 1;
-        (*nextalloc).offset = (uint64_t)NULL;
+        nextalloc->free = 1;
+        nextalloc->offset = (uint64_t)NULL;
 
         return (char *)addr + BOOK_SIZE;
     } else {
@@ -86,7 +98,6 @@ void *calloc(size_t nmemb, size_t size){
 }
 
 void *realloc(void *ptr, size_t size){
-    void *currentbreak = sbrk(0);
     if (ptr == NULL){
         return malloc(size);
     }
@@ -95,13 +106,15 @@ void *realloc(void *ptr, size_t size){
     }
     void *checkallocaddr = (char *)ptr - BOOK_SIZE;
     struct allocation *checkalloc = checkallocaddr;
-    size_t currentsize = ((*checkalloc)).offset - BOOK_SIZE;
-    checkalloc += (*checkalloc).offset;
-    while (((void *)checkalloc < currentbreak) && ((*checkalloc).free == 1)) {
-        currentsize += (*checkalloc).offset;
+    size_t currentsize = checkalloc->offset - BOOK_SIZE;
+    checkallocaddr += checkalloc->offset;
+    while ((checkallocaddr < currentbreak) && (checkalloc->free == 1)) {
+        checkalloc = checkallocaddr;
+        currentsize += checkalloc->offset;
         if (currentsize >= size){
             return ptr;
         }
+        checkallocaddr += checkalloc->offset;
     }
     void *addr = malloc(size);
     return addr;
