@@ -12,7 +12,7 @@
 
 static void *allocstart;
 static void *currentbreak;
-void swrite(void *ptr);
+void swrite(void *ptr, int type, int func);
 
 //16 bytes long
 struct allocation {
@@ -45,7 +45,7 @@ void *malloc(size_t bytes){
                         nextalloc->free = 1;
                         nextalloc->offset = ogoffset - allocsize;
                     }
-                    swrite(addr + BOOK_SIZE);
+                    swrite(addr + BOOK_SIZE, 1, 1);
                     return (char *)addr + BOOK_SIZE;
                 }
                 else if ((uint64_t*)((*checkalloc).offset) == NULL) {
@@ -59,6 +59,7 @@ void *malloc(size_t bytes){
                         struct allocation *nextalloc = nextallocaddr;
                         nextalloc->free = 1;
                         nextalloc->offset = (uint64_t)NULL;
+                        swrite(addr + BOOK_SIZE, 1, 1);
                         return (char *)addr + BOOK_SIZE;
                     } else {
                         break;
@@ -95,7 +96,7 @@ void *malloc(size_t bytes){
         nextalloc->offset = (uint64_t)NULL;
 
         //assert((uint64_t )((char *)addr + BOOK_SIZE) % 16 ==0);
-        swrite(addr + BOOK_SIZE);
+        swrite(addr + BOOK_SIZE, 1, 1);
         return (char *)addr + BOOK_SIZE;
     } else {
         return NULL;
@@ -104,7 +105,7 @@ void *malloc(size_t bytes){
 
 void free(void *ptr){
     if (ptr != NULL){
-        //swrite(ptr);
+        swrite(ptr, 2, 4);
         uint64_t *free = (uint64_t *)((char *)ptr-BOOK_SIZE);
         *free = 1;
     }
@@ -113,7 +114,7 @@ void free(void *ptr){
 void *calloc(size_t nmemb, size_t size){
     void *addr = malloc(nmemb*size);
     memset(addr, 0, nmemb*size);
-    //swrite(addr);
+    swrite(addr, 1, 2);
     return addr;
 }
 
@@ -141,7 +142,7 @@ void *realloc(void *ptr, size_t size){
         if (currentsize >= size){
             struct allocation *returnalloc = ptr;
             returnalloc->offset = (uint64_t)currentsize + BOOK_SIZE;
-            swrite(ptr);
+            swrite(ptr, 1, 3);
             return ptr;
         }
         if (checkalloc->offset == (uint64_t *)NULL){
@@ -167,21 +168,38 @@ void itoa(uint64_t n, char s[]){
     s[i] = '\0';
 }
 
-void swrite(void *addr) {
-    uint64_t num = (uint64_t)addr;
-    char s[50];
-    itoa(num, s);
-    int fd = open("memory.txt", (O_CREAT | O_RDWR | O_APPEND), S_IRWXU);
-    //perror("open: ");
-    /*
+void swrite(void *addr, int type, int func) {
+    struct allocation *alloc = addr - BOOK_SIZE;
+    uint64_t address = (uint64_t)addr;
+    uint64_t addr2 = (uint64_t)addr + alloc->offset;
+    char addrstring[50];
+    itoa(address , addrstring);
+    char s2[50];
+    itoa(alloc->offset, s2);
+    char addr2string[50];
+    itoa(addr2, addr2string);
+    int fd = open("memory.txt", O_CREAT|O_WRONLY|O_APPEND, 0777);
+    if (func == 1){
+        write(fd, "malloc ", strlen("malloc "));
+    } else if (func == 2) {
+        write(fd, "calloc ", strlen("calloc "));
+    } else if (func == 3) {
+        write(fd, "realloc ", strlen("realloc "));
+    } else if (func == 4) {
+        write(fd, "free ", strlen("free "));
+    }
     if (type == 1) {
         write(fd, "return ", strlen("return "));
     } else if (type == 2) {
         write(fd, "free ", strlen("free "));
     }
-    */
-    write(fd, s, strlen(s));
+    write(fd, addrstring, strlen(addrstring));
+    write(fd, " -> ", 4);
+    write(fd, s2, strlen(s2));
+    write(fd, " -> ", 4);
+    write(fd, addr2string, strlen(addr2string));
     write(fd, "\n", 1);
-    //perror("write: ");
-    close(fd);
+    if (close(fd) == -1){
+        perror("close: ");
+    }
 }
