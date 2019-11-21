@@ -7,8 +7,8 @@ my-malloc: my-malloc.c
 test-malloc: test-malloc.c
 	gcc -g -o test-malloc test-malloc.c
 
-.PHONY: test
-testls:
+.PHONY: tls 
+tls:
 	gdb --args env LD_PRELOAD=./my-malloc.so ls -lR /usr/
 
 .PHONY: clean

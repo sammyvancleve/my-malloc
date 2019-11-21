@@ -22,7 +22,7 @@ struct allocation {
 
 void *malloc(size_t bytes){
     void *addr;
-    //round up size of alloc so it is on boundary
+    //ALL GOOD
     if (bytes % BOUNDARY != 0) {
         bytes = bytes + (BOUNDARY - (bytes % BOUNDARY));
     }
@@ -36,10 +36,17 @@ void *malloc(size_t bytes){
                 if (checkalloc->offset > allocsize) {
                     checkalloc->free = 0;
                     addr = (char *)check;
-                    //if ((checkalloc->offset - allocsize) > 32){
-                        //checkalloc->offset = allocsize
-                    //}
-                    return addr + BOOK_SIZE;
+                    if ((checkalloc->offset - allocsize) > 32){
+                        uint64_t ogoffset = (uint64_t)checkalloc->offset;
+                        checkalloc->offset = allocsize;
+                        void *nextallocaddr = (char *)check + allocsize;
+                        //void *nextallocaddr = (char *)addr + allocsize;
+                        struct allocation *nextalloc = nextallocaddr;
+                        nextalloc->free = 1;
+                        nextalloc->offset = ogoffset - allocsize;
+                    }
+                    swrite(addr + BOOK_SIZE);
+                    return (char *)addr + BOOK_SIZE;
                 }
                 else if ((uint64_t*)((*checkalloc).offset) == NULL) {
                     if ((check + allocsize + sizeof(checkalloc)) < currentbreak) {
@@ -58,14 +65,15 @@ void *malloc(size_t bytes){
                     }
                 }
             }
-            //if its free and theres no offset
             else if ((uint64_t*)(*checkalloc).offset == NULL) {
+                //TODO save this value
+                //so next alloc starts here?
                 break;
             }
             check = (char *)check + checkalloc->offset;
         }
     }
-    if((addr = sbrk((bytes+BOOK_SIZE+BOOK_SIZE)+4096000)) != (void *) -1) {
+    if((addr = sbrk((bytes+BOOK_SIZE+BOOK_SIZE))) != (void *) -1) {
         //set allocstart if first time calling malloc
         if (allocstart == NULL){
             allocstart = addr;
@@ -86,7 +94,8 @@ void *malloc(size_t bytes){
         nextalloc->free = 1;
         nextalloc->offset = (uint64_t)NULL;
 
-        assert((uint64_t )((char *)addr + BOOK_SIZE) % 16 ==0);
+        //assert((uint64_t )((char *)addr + BOOK_SIZE) % 16 ==0);
+        swrite(addr + BOOK_SIZE);
         return (char *)addr + BOOK_SIZE;
     } else {
         return NULL;
@@ -126,26 +135,48 @@ void *realloc(void *ptr, size_t size){
     } else {
         return malloc(size);
     }
-    while ((checkallocaddr < currentbreak) && (checkalloc->free == 1) &&
-    (checkalloc->offset != (uint64_t)NULL)) {
+    while ((checkallocaddr < currentbreak) && (checkalloc->free == 1)) {
         checkalloc = checkallocaddr;
         currentsize += (size_t)checkalloc->offset;
         if (currentsize >= size){
             struct allocation *returnalloc = ptr;
             returnalloc->offset = (uint64_t)currentsize + BOOK_SIZE;
-            //swrite(ptr);
+            swrite(ptr);
             return ptr;
+        }
+        if (checkalloc->offset == (uint64_t *)NULL){
+            break;
         }
         checkallocaddr = (char *)checkallocaddr + checkalloc->offset;
     }
     return malloc(size);
 }
 
+void itoa(uint64_t n, char s[]){
+    uint64_t i = 0;
+    do {
+        s[i++] = n % 10 + '0';
+    } while ((n /= 10) > 0);
+    char reverses[50];
+    for (int x = 0; x < i; x++){
+        reverses[x] = s[i-1-x];
+    }
+    for (int y = 0; y < i; y++){
+        s[y] = reverses[y];
+    }
+    s[i] = '\0';
+}
+
 void swrite(void *addr) {
-    int fd = open("memory.txt", O_RDWR | O_CREAT, S_IRWXU);
+    uint64_t num = (uint64_t)addr;
+    char s[50];
+    itoa(num, s);
+    int fd = open("memory.txt", O_RDWR , S_IRWXU);
     //perror("open: ");
     //char *s = (uint64_t)&addr;
-    write(fd, (char *)&addr, strlen(sizeof(addr)));
-    write(fd, "\n", 1);
+    write(fd, s, strlen(s));
+    perror("write: ");
+    //write(fd, (char *)&addr, strlen(sizeof(addr)));
+    write(1, "\n", 1);
     close(fd);
 }
