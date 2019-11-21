@@ -1,3 +1,6 @@
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -9,6 +12,7 @@
 
 static void *allocstart;
 static void *currentbreak;
+void swrite(void *ptr);
 
 //16 bytes long
 struct allocation {
@@ -26,28 +30,29 @@ void *malloc(size_t bytes){
         size_t allocsize = bytes + BOOK_SIZE;
         void *check;
         check = allocstart;
-        struct allocation *checkalloc;
         while (check < currentbreak) {
-            checkalloc = check;
+            struct allocation *checkalloc = check;
             if (checkalloc->free == 1) {
                 if (checkalloc->offset > allocsize) {
                     checkalloc->free = 0;
-                    addr = check + BOOK_SIZE;
-                    return addr;
+                    addr = (char *)check;
+                    //if ((checkalloc->offset - allocsize) > 32){
+                        //checkalloc->offset = allocsize
+                    //}
+                    return addr + BOOK_SIZE;
                 }
-                else if ((uint64_t *)(*checkalloc).offset == NULL) {
+                else if ((uint64_t*)((*checkalloc).offset) == NULL) {
                     if ((check + allocsize + sizeof(checkalloc)) < currentbreak) {
                         addr = check;
                         checkalloc->free = 0;
-                        checkalloc->offset = allocsize;
+                        checkalloc->offset = bytes + BOOK_SIZE;
 
                         //allocation following
-                        void *nextallocaddr = addr + checkalloc->offset;
+                        void *nextallocaddr = (char *)addr + allocsize;
                         struct allocation *nextalloc = nextallocaddr;
                         nextalloc->free = 1;
                         nextalloc->offset = (uint64_t)NULL;
-
-                        return addr + BOOK_SIZE;
+                        return (char *)addr + BOOK_SIZE;
                     } else {
                         break;
                     }
@@ -57,20 +62,23 @@ void *malloc(size_t bytes){
             else if ((uint64_t*)(*checkalloc).offset == NULL) {
                 break;
             }
-            check = check + checkalloc->offset;
+            check = (char *)check + checkalloc->offset;
         }
     }
-    if((addr = sbrk(bytes+10240)) != (void *) -1) {
+    if((addr = sbrk((bytes+BOOK_SIZE+BOOK_SIZE)+4096000)) != (void *) -1) {
         //set allocstart if first time calling malloc
         if (allocstart == NULL){
             allocstart = addr;
         }
         currentbreak = sbrk(0);
 
+        //record all uses of malloc/free
+        //make sure they are correct
+
         //allocation to be returned
         struct allocation *alloc = addr;
         alloc->free = 0;
-        alloc->offset = bytes + BOOK_SIZE;
+        alloc->offset = (bytes + BOOK_SIZE);
 
         //allocation following
         void *nextallocaddr = (char *)addr + alloc->offset;
@@ -78,6 +86,7 @@ void *malloc(size_t bytes){
         nextalloc->free = 1;
         nextalloc->offset = (uint64_t)NULL;
 
+        assert((uint64_t )((char *)addr + BOOK_SIZE) % 16 ==0);
         return (char *)addr + BOOK_SIZE;
     } else {
         return NULL;
@@ -86,6 +95,7 @@ void *malloc(size_t bytes){
 
 void free(void *ptr){
     if (ptr != NULL){
+        //swrite(ptr);
         uint64_t *free = (uint64_t *)((char *)ptr-BOOK_SIZE);
         *free = 1;
     }
@@ -94,28 +104,48 @@ void free(void *ptr){
 void *calloc(size_t nmemb, size_t size){
     void *addr = malloc(nmemb*size);
     memset(addr, 0, nmemb*size);
+    //swrite(addr);
     return addr;
 }
 
 void *realloc(void *ptr, size_t size){
-    if (ptr == NULL){
+    if (ptr == NULL) {
         return malloc(size);
     }
-    if (size == 0){
+    if (size == 0) {
         free(ptr);
     }
+    //create starting address
     void *checkallocaddr = (char *)ptr - BOOK_SIZE;
     struct allocation *checkalloc = checkallocaddr;
+    //get current size
     size_t currentsize = checkalloc->offset - BOOK_SIZE;
-    checkallocaddr += checkalloc->offset;
-    while ((checkallocaddr < currentbreak) && (checkalloc->free == 1)) {
+    checkallocaddr = (char *)checkallocaddr + checkalloc->offset;
+    if (checkallocaddr < currentbreak) {
         checkalloc = checkallocaddr;
-        currentsize += checkalloc->offset;
+    } else {
+        return malloc(size);
+    }
+    while ((checkallocaddr < currentbreak) && (checkalloc->free == 1) &&
+    (checkalloc->offset != (uint64_t)NULL)) {
+        checkalloc = checkallocaddr;
+        currentsize += (size_t)checkalloc->offset;
         if (currentsize >= size){
+            struct allocation *returnalloc = ptr;
+            returnalloc->offset = (uint64_t)currentsize + BOOK_SIZE;
+            //swrite(ptr);
             return ptr;
         }
-        checkallocaddr += checkalloc->offset;
+        checkallocaddr = (char *)checkallocaddr + checkalloc->offset;
     }
-    void *addr = malloc(size);
-    return addr;
+    return malloc(size);
+}
+
+void swrite(void *addr) {
+    int fd = open("memory.txt", O_RDWR | O_CREAT, S_IRWXU);
+    //perror("open: ");
+    //char *s = (uint64_t)&addr;
+    write(fd, (char *)&addr, strlen(sizeof(addr)));
+    write(fd, "\n", 1);
+    close(fd);
 }
