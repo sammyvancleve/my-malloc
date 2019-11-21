@@ -17,7 +17,9 @@ clean:
 
 .PHONY: qtest
 qtest:
+	sudo rm memory.txt
 	LD_PRELOAD=./my-malloc.so ls -lR /usr/
+	vim memory.txt
 
 .PHONY: qtest2
 qtest2:
