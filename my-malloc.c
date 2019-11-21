@@ -12,7 +12,10 @@
 
 static void *allocstart;
 static void *currentbreak;
+static void *next;
+void *findnext(size_t size);
 void swrite(void *ptr, int type, int func);
+void *findnext(size_t size);
 
 //16 bytes long
 struct allocation {
@@ -20,13 +23,63 @@ struct allocation {
     uint64_t offset;
 };
 
+void *findnext(size_t size) {
+    void *check = allocstart;
+    size_t allocsize = size + BOOK_SIZE;
+    while (check < currentbreak) {
+        struct allocation *checkalloc = check;
+        if (checkalloc->free == 1) {
+            if (checkalloc->offset > allocsize) {
+                checkalloc->free = 0;
+                return check;
+            }
+        }
+    }
+}
+
+void *search(size_t bytes) {
+    size_t allocsize = bytes + BOOK_SIZE;
+    void *check = allocstart;
+    struct allocation *checkalloc;
+    while (check < currentbreak) {
+        checkalloc = check;
+        if (checkalloc->free == 1 && checkalloc->offset > allocsize) {
+            checkalloc->free = 0;
+            return check;
+        } else if ((uint64_t)checkalloc->offset == NULL) {
+            if (currentbreak > (check + allocsize + BOOK_SIZE)) {
+                checkalloc->free = 0;
+                checkalloc->offset = allocsize;
+                
+                void *nextallocaddr = check + checkalloc->offset;
+                struct allocation *nextalloc = nextallocaddr;
+                nextalloc->free = 1;
+                nextalloc->offset = (uint64_t)NULL;
+
+                return check;
+            } else {
+                return NULL;
+            }
+        }
+        else if ((uint64_t)checkalloc->offset == NULL) {
+            return NULL;
+        }
+        check = check + checkalloc->offset;
+    }
+    return NULL;
+}
+
 void *malloc(size_t bytes){
     void *addr;
-    //ALL GOOD
     if (bytes % BOUNDARY != 0) {
         bytes = bytes + (BOUNDARY - (bytes % BOUNDARY));
     }
     if (allocstart != NULL) {
+        if ((addr = search(bytes)) != NULL) {
+            swrite(addr + BOOK_SIZE, 1, 1);
+            return addr + BOOK_SIZE;
+        }
+        /*
         size_t allocsize = bytes + BOOK_SIZE;
         void *check;
         check = allocstart;
@@ -45,11 +98,12 @@ void *malloc(size_t bytes){
                         nextalloc->free = 1;
                         nextalloc->offset = ogoffset - allocsize;
                     }
-                    swrite(addr + BOOK_SIZE, 1, 1);
+                    swrite((char *)addr + BOOK_SIZE, 1, 1);
                     return (char *)addr + BOOK_SIZE;
                 }
                 else if ((uint64_t*)((*checkalloc).offset) == NULL) {
-                    if ((check + allocsize + sizeof(checkalloc)) < currentbreak) {
+                    if (((char *)check + allocsize + sizeof(checkalloc)) <
+                    (char *) currentbreak) {
                         addr = check;
                         checkalloc->free = 0;
                         checkalloc->offset = bytes + BOOK_SIZE;
@@ -73,6 +127,7 @@ void *malloc(size_t bytes){
             }
             check = (char *)check + checkalloc->offset;
         }
+        */
     }
     if((addr = sbrk((bytes+BOOK_SIZE+BOOK_SIZE))) != (void *) -1) {
         //set allocstart if first time calling malloc
@@ -95,7 +150,6 @@ void *malloc(size_t bytes){
         nextalloc->free = 1;
         nextalloc->offset = (uint64_t)NULL;
 
-        //assert((uint64_t )((char *)addr + BOOK_SIZE) % 16 ==0);
         swrite(addr + BOOK_SIZE, 1, 1);
         return (char *)addr + BOOK_SIZE;
     } else {
@@ -145,7 +199,7 @@ void *realloc(void *ptr, size_t size){
             swrite(ptr, 1, 3);
             return ptr;
         }
-        if (checkalloc->offset == (uint64_t *)NULL){
+        if (checkalloc->offset == (uint64_t)NULL){
             break;
         }
         checkallocaddr = (char *)checkallocaddr + checkalloc->offset;
@@ -169,7 +223,7 @@ void itoa(uint64_t n, char s[]){
 }
 
 void swrite(void *addr, int type, int func) {
-    struct allocation *alloc = addr - BOOK_SIZE;
+    struct allocation *alloc = (char *)addr - BOOK_SIZE;
     uint64_t address = (uint64_t)addr;
     uint64_t addr2 = (uint64_t)addr + alloc->offset;
     char addrstring[50];
