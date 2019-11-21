@@ -171,12 +171,17 @@ void swrite(void *addr) {
     uint64_t num = (uint64_t)addr;
     char s[50];
     itoa(num, s);
-    int fd = open("memory.txt", O_RDWR , S_IRWXU);
+    int fd = open("memory.txt", (O_CREAT | O_RDWR | O_APPEND), S_IRWXU);
     //perror("open: ");
-    //char *s = (uint64_t)&addr;
+    /*
+    if (type == 1) {
+        write(fd, "return ", strlen("return "));
+    } else if (type == 2) {
+        write(fd, "free ", strlen("free "));
+    }
+    */
     write(fd, s, strlen(s));
-    perror("write: ");
-    //write(fd, (char *)&addr, strlen(sizeof(addr)));
-    write(1, "\n", 1);
+    write(fd, "\n", 1);
+    //perror("write: ");
     close(fd);
 }
