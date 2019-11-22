@@ -9,6 +9,7 @@ test-malloc: test-malloc.c
 
 .PHONY: tls 
 tls:
+	rm memory.txt
 	gdb --args env LD_PRELOAD=./my-malloc.so ls -lR /usr/
 
 .PHONY: clean
@@ -17,10 +18,10 @@ clean:
 
 .PHONY: qtest
 qtest:
-	sudo rm memory.txt
-	LD_PRELOAD=./my-malloc.so ls -lR /usr/
+	rm memory.txt
+	sudo LD_PRELOAD=./my-malloc.so ls -lR /usr/
 	vim memory.txt
 
 .PHONY: qtest2
 qtest2:
-	LD_PRELOAD=./my-malloc.so ls -l
+	sudo LD_PRELOAD=./my-malloc.so ls -l
