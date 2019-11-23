@@ -44,6 +44,7 @@ void *search(size_t size) {
     return NULL;
 }
 
+//for program use, assumes pointer is to a correct alloc
 void split(void *ptr, size_t size) {
     struct allocation *checkalloc = ptr;
     size_t minimumsize = sizeof(struct allocation) + BOUNDARY;
@@ -62,6 +63,24 @@ void free(void *ptr) {
         struct allocation *alloc = (void *)((char *)ptr - sizeof(struct allocation));
         alloc->free = 1;
     }
+
+}
+
+int enlarge(void *ptr, size_t size) {
+    size_t currentsize = size;
+    void *check = (void *)ptr;
+    struct allocation *checkalloc = check;
+    check = (char *)check + checkalloc->offset;
+    checkalloc = check;
+    while ((check < currentbrk) && (checkalloc->free == 1)) {
+        currentsize += checkalloc->offset;
+        if (currentsize >= size) {
+            return 1;
+        }
+        check = (char *)check + checkalloc->offset;
+        checkalloc = check;
+    }
+    return 0;
 }
 
 void *malloc(size_t size) {
@@ -77,6 +96,7 @@ void *malloc(size_t size) {
             split(addr, fullsize);
             struct allocation *alloc = addr;
             alloc->free = 0;
+            printuint(fullsize, "m1");
             return (char *)addr + sizeof(struct allocation);
         }
         if (testnext(fullsize)) {
@@ -97,7 +117,7 @@ void *malloc(size_t size) {
         alloc->free = 0;
         alloc->offset = fullsize;
         next = (char *)addr + alloc->offset;
-        printuint((currentbrk-start), "m");
+        printuint(fullsize, "m");
         return (char *)addr + sizeof(struct allocation);
    } else {
         exit(1);
@@ -105,8 +125,12 @@ void *malloc(size_t size) {
 }
 
 void *calloc(size_t nmemb, size_t size) {
+    if ((nmemb == 0) || (size == 0)) {
+        return NULL;
+    }
     void *addr = malloc(nmemb*size);
     memset(addr, 0, nmemb*size);
+    printuint(nmemb*size, "c");
     return addr;
 }
 
@@ -117,6 +141,11 @@ void *realloc(void *ptr, size_t size) {
     if (size == 0) {
         free(ptr);
         return NULL;
+    }
+    size_t minimumsize = size + sizeof(struct allocation);
+    if (enlarge(ptr, minimumsize)) {
+        split(ptr, minimumsize);
+        return ptr;
     }
     free(ptr);
     return malloc(size);

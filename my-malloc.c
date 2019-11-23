@@ -21,11 +21,6 @@ struct allocation {
     uint64_t offset;
 };
 
-int testnext(size_t size) {
-    if ((next + size) <= currentbreak)
-
-}
-
 //return pointer to bookkeeping struct of first alloc 
 //found with >= bytes available for user allocation
 //return NULL if no free allocs are found
@@ -106,8 +101,8 @@ void *malloc(size_t bytes){
             struct allocation *alloc = addr;
             alloc->free = 0;
             if (alloc->offset != NULL) {
-                void *nextalloc = (char *)addr + alloc->offset;
-                struct allocation *nextalloc = nextalloc;
+                void *nextallocaddr = (char *)addr + alloc->offset;
+                struct allocation *nextalloc = nextallocaddr;
             } else {
                 alloc->offset = bytes + BOOK_SIZE;
 
