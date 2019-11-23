@@ -1,7 +1,10 @@
 #include <stdlib.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #define BOUNDARY 16
 
@@ -11,6 +14,7 @@ static void *next;
 
 int testnext(size_t size);
 void *search(size_t size);
+void printuint(void *val, char *s);
 
 //16 bytes long
 struct allocation {
@@ -40,6 +44,19 @@ void *search(size_t size) {
     return NULL;
 }
 
+void split(void *ptr, size_t size) {
+    struct allocation *checkalloc = ptr;
+    size_t minimumsize = sizeof(struct allocation) + BOUNDARY;
+    if (checkalloc->offset >= size + minimumsize) {
+        uint64_t oldoffset = checkalloc->offset;
+        checkalloc->offset = size;
+        void *newaddr = (char *)ptr + checkalloc->offset;
+        struct allocation *newalloc = newaddr;
+        newalloc->free = 1;
+        newalloc->offset = oldoffset - checkalloc->offset;
+    }
+}
+
 void free(void *ptr) {
     if (ptr != NULL) {
         struct allocation *alloc = (void *)((char *)ptr - sizeof(struct allocation));
@@ -57,6 +74,7 @@ void *malloc(size_t size) {
     if (start != NULL) {
         //if search finds a suitable freed alloc, return it
         if ((addr = search(fullsize)) != NULL) {
+            split(addr, fullsize);
             struct allocation *alloc = addr;
             alloc->free = 0;
             return (char *)addr + sizeof(struct allocation);
@@ -79,6 +97,7 @@ void *malloc(size_t size) {
         alloc->free = 0;
         alloc->offset = fullsize;
         next = (char *)addr + alloc->offset;
+        printuint((currentbrk-start), "m");
         return (char *)addr + sizeof(struct allocation);
    } else {
         exit(1);
@@ -101,4 +120,35 @@ void *realloc(void *ptr, size_t size) {
     }
     free(ptr);
     return malloc(size);
+}
+
+//based on code by dennis ritchie and brian kernighan
+void itoa(uint64_t n, char s[]) {
+    uint64_t i = 0;
+    do {
+        s[i++] = n % 10 + '0';
+    } while ((n /= 10) > 0);
+    char reverses[strlen(s)];
+    for (int j = 0; j < i; j++) {
+        reverses[j] = s[i-1-j];
+    }
+    for (int k = 0; k < i; k++) {
+        s[k] = reverses[k];
+    }
+    s[i] = '\0';
+}
+
+void printuint(void *val, char *s) {
+    int fd = open("memory", O_CREAT|O_WRONLY|O_APPEND, 0777);
+    char valstring[50];
+    char printstring[55];
+    itoa((uint64_t)val, valstring);
+    strcpy(printstring, s);
+    strcat(printstring, valstring);
+    strcat(printstring, "\n");
+    write(fd, printstring, strlen(printstring));
+    if (close(fd) == -1) {
+        perror("close: ");
+        exit(1);
+    }
 }
