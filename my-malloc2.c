@@ -22,15 +22,20 @@ struct allocation {
     uint64_t offset;
 };
 
+//non-user function
+//returns 1 if next alloc can accomodate exact size
+//including bookkeeping struct
 int testnext(size_t size) {
-    //TODO check if this works for equals
-    if ((void *)((char *)next + size) <= currentbrk) {
+    if ((void *)((char *)next + size) < currentbrk) {
         return 1;
     } else {
         return 0;
     }
 }
 
+//non-user function
+//returns pointer to alloc with offset greater than
+//or equal to size, including bookkeeping struct
 void *search(size_t size) {
     void *check = (char *)start;
     struct allocation *checkalloc;
@@ -62,8 +67,8 @@ void free(void *ptr) {
     if (ptr != NULL) {
         struct allocation *alloc = (void *)((char *)ptr - sizeof(struct allocation));
         alloc->free = 1;
+        printuint(ptr-sizeof(struct allocation), "free: ");
     }
-
 }
 
 int enlarge(void *ptr, size_t size) {
@@ -89,20 +94,22 @@ void *malloc(size_t size) {
     if (fullsize % BOUNDARY != 0) {
         fullsize = fullsize + (BOUNDARY - (fullsize % BOUNDARY));
     }
-    //if malloc has been called before
     if (start != NULL) {
-        //if search finds a suitable freed alloc, return it
         if ((addr = search(fullsize)) != NULL) {
             split(addr, fullsize);
             struct allocation *alloc = addr;
             alloc->free = 0;
-            printuint(fullsize, "m1");
+            printalloc(addr, fullsize);
             return (char *)addr + sizeof(struct allocation);
         }
         if (testnext(fullsize)) {
-            struct allocation *alloc = next;
+            addr = (char *)next;
+            struct allocation *alloc = addr;
             alloc->free = 0;
             alloc->offset = fullsize;
+            next = (char *)next + alloc->offset;
+            printalloc(addr, fullsize);
+            return (char *)addr + sizeof(struct allocation);
         }
     }
     if ((addr = sbrk(fullsize)) != (void *) -1) {
@@ -117,11 +124,11 @@ void *malloc(size_t size) {
         alloc->free = 0;
         alloc->offset = fullsize;
         next = (char *)addr + alloc->offset;
-        printuint(fullsize, "m");
+        printalloc(addr, fullsize);
         return (char *)addr + sizeof(struct allocation);
-   } else {
+    } else {
         exit(1);
-   }
+    }
 }
 
 void *calloc(size_t nmemb, size_t size) {
@@ -130,24 +137,30 @@ void *calloc(size_t nmemb, size_t size) {
     }
     void *addr = malloc(nmemb*size);
     memset(addr, 0, nmemb*size);
-    printuint(nmemb*size, "c");
+    printuint(0, "calloc");
     return addr;
 }
 
 void *realloc(void *ptr, size_t size) {
-    if (ptr == NULL) {
-        return malloc(size);
-    }
-    if (size == 0) {
-        free(ptr);
+    if ((ptr == NULL) && (size == 0)) {
         return NULL;
+    } else if (ptr == NULL) {
+        return malloc(size);
+    } else if (size == 0) {
+        free(ptr);
     }
-    size_t minimumsize = size + sizeof(struct allocation);
-    if (enlarge(ptr, minimumsize)) {
-        split(ptr, minimumsize);
+    void *allocpointer = (char *)ptr - sizeof(struct allocation);
+    size_t fullsize = size + sizeof(struct allocation);
+    if (fullsize % BOUNDARY != 0) {
+        fullsize = fullsize + (BOUNDARY - (fullsize % BOUNDARY));
+    }
+    if (enlarge(allocpointer, fullsize)) {
+        split(allocpointer, fullsize);
         return ptr;
     }
     free(ptr);
+    printuint(ptr, "realloc");
+    printuint(fullsize, "realloc2");
     return malloc(size);
 }
 
@@ -170,7 +183,7 @@ void itoa(uint64_t n, char s[]) {
 void printuint(void *val, char *s) {
     int fd = open("memory", O_CREAT|O_WRONLY|O_APPEND, 0777);
     char valstring[50];
-    char printstring[55];
+    char printstring[10];
     itoa((uint64_t)val, valstring);
     strcpy(printstring, s);
     strcat(printstring, valstring);
@@ -180,4 +193,9 @@ void printuint(void *val, char *s) {
         perror("close: ");
         exit(1);
     }
+}
+
+void printalloc(void *ptr, size_t size) {
+    printuint(ptr, "malloc: ");
+    printuint(size, "size: ");
 }

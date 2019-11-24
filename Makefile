@@ -35,4 +35,4 @@ qtest:
 
 .PHONY: qtest2
 qtest2:
-	sudo LD_PRELOAD=./my-malloc.so ls -lR /usr/
+	sudo LD_PRELOAD=./my-malloc2.so ls -lR /usr/
