@@ -1,5 +1,4 @@
 #include <stdlib.h>
-#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
@@ -7,17 +6,17 @@
 #include <stdint.h>
 #include <unistd.h>
 
-#define BOUNDARY 4096
+#define ALIGNMENT 16
 
 static void *start;
 static void *currentbrk;
 static void *next;
 
-int testnext(size_t size);
-int enlarge(void *ptr, size_t size);
-void split(void *ptr, size_t size);
-void *search(size_t size);
-void printuint(void *val, char *s);
+static int testnext(size_t size);
+static int enlarge(void *ptr, size_t size);
+static void split(void *ptr, size_t size);
+static void *search(size_t size);
+static void printuint(void *val, char *s);
 
 //16 bytes long
 struct allocation {
@@ -26,9 +25,9 @@ struct allocation {
 };
 
 //non-user function
-//returns 1 if next alloc can accomodate exact size
-//including bookkeeping struct
-int testnext(size_t size) {
+//returns 1 if there is enough empty space
+//before the brea to accomodate size
+static int testnext(size_t size) {
     if ((void *)((char *)next + size) < currentbrk) {
         return 1;
     } else {
@@ -39,7 +38,7 @@ int testnext(size_t size) {
 //non-user function
 //returns pointer to alloc with offset greater than
 //or equal to size
-void *search(size_t size) {
+static void *search(size_t size) {
     void *check = (char *)start;
     struct allocation *checkalloc;
     while (check < currentbrk && check < next) {
@@ -56,10 +55,9 @@ void *search(size_t size) {
 //for program use, assumes pointer is to a correct alloc
 //splits allocation into two if there is enough space for
 //a second allocation after an alloc of size is made
-void split(void *ptr, size_t size) {
+static void split(void *ptr, size_t size) {
     struct allocation *checkalloc = ptr;
-    size_t minimumsize = BOUNDARY;
-    //size_t minimumsize = sizeof(struct allocation) + BOUNDARY;
+    size_t minimumsize = sizeof(struct allocation) + ALIGNMENT;
     if (checkalloc->offset >= size + minimumsize) {
         uint64_t oldoffset = checkalloc->offset;
         checkalloc->offset = size;
@@ -85,7 +83,7 @@ void free(void *ptr) {
 //the one given by ptr such that they may be combined
 //into one alloc size large
 //else returns 0
-int enlarge(void *ptr, size_t size) {
+static int enlarge(void *ptr, size_t size) {
     size_t currentsize = size;
     void *check = (void *)ptr;
     struct allocation *checkalloc = check;
@@ -104,11 +102,14 @@ int enlarge(void *ptr, size_t size) {
 
 //user function
 void *malloc(size_t size) {
+    if (size == 0) {
+        return NULL;
+    }
     void *addr;
     size_t fullsize = size + sizeof(struct allocation);
     //rounded up so it is aligned on the boundary
-    if (fullsize % BOUNDARY != 0) {
-        fullsize = fullsize + (BOUNDARY - (fullsize % BOUNDARY));
+    if (fullsize % ALIGNMENT != 0) {
+        fullsize = fullsize + (ALIGNMENT - (fullsize % ALIGNMENT));
     }
     if (start != NULL) {
         if ((addr = search(fullsize)) != NULL) {
@@ -131,6 +132,7 @@ void *malloc(size_t size) {
         sbrksize = 4096;
     } else {
         sbrksize = fullsize + (4096 - (fullsize % 4096));
+        sbrksize = sbrksize + 4096;
     }
     if ((addr = sbrk(sbrksize)) != (void *) -1) {
         struct allocation *alloc;
@@ -170,8 +172,8 @@ void *realloc(void *ptr, size_t size) {
     }
     void *allocpointer = (char *)ptr - sizeof(struct allocation);
     size_t fullsize = size + sizeof(struct allocation);
-    if (fullsize % BOUNDARY != 0) {
-        fullsize = fullsize + (BOUNDARY - (fullsize % BOUNDARY));
+    if (fullsize % ALIGNMENT != 0) {
+        fullsize = fullsize + (ALIGNMENT - (fullsize % ALIGNMENT));
     }
     if (enlarge(allocpointer, fullsize)) {
         split(allocpointer, fullsize);
