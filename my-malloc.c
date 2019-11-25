@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
@@ -6,7 +7,7 @@
 #include <stdint.h>
 #include <unistd.h>
 
-#define BOUNDARY 16
+#define BOUNDARY 4096
 
 static void *start;
 static void *currentbrk;
@@ -24,7 +25,6 @@ struct allocation {
     uint64_t offset;
 };
 
-//good?
 //non-user function
 //returns 1 if next alloc can accomodate exact size
 //including bookkeeping struct
@@ -36,10 +36,9 @@ int testnext(size_t size) {
     }
 }
 
-//good
 //non-user function
 //returns pointer to alloc with offset greater than
-//or equal to size, including bookkeeping struct
+//or equal to size
 void *search(size_t size) {
     void *check = (char *)start;
     struct allocation *checkalloc;
@@ -53,11 +52,14 @@ void *search(size_t size) {
     return NULL;
 }
 
-//good
+//non-user function
 //for program use, assumes pointer is to a correct alloc
+//splits allocation into two if there is enough space for
+//a second allocation after an alloc of size is made
 void split(void *ptr, size_t size) {
     struct allocation *checkalloc = ptr;
-    size_t minimumsize = sizeof(struct allocation) + BOUNDARY;
+    size_t minimumsize = BOUNDARY;
+    //size_t minimumsize = sizeof(struct allocation) + BOUNDARY;
     if (checkalloc->offset >= size + minimumsize) {
         uint64_t oldoffset = checkalloc->offset;
         checkalloc->offset = size;
@@ -68,14 +70,21 @@ void split(void *ptr, size_t size) {
     }
 }
 
-//good
+//user function
+//frees alloc corresponding to user provided pointer
 void free(void *ptr) {
     if (ptr != NULL) {
-        struct allocation *alloc = (void *)((char *)ptr - sizeof(struct allocation));
+        void *allocaddr = (char *)ptr - sizeof(struct allocation);
+        struct allocation *alloc = allocaddr;
         alloc->free = 1;
     }
 }
 
+//non-user function
+//returns 1 if there are enough freed allocs following
+//the one given by ptr such that they may be combined
+//into one alloc size large
+//else returns 0
 int enlarge(void *ptr, size_t size) {
     size_t currentsize = size;
     void *check = (void *)ptr;
@@ -83,7 +92,7 @@ int enlarge(void *ptr, size_t size) {
     check = (char *)check + checkalloc->offset;
     checkalloc = check;
     while ((check < currentbrk) && (checkalloc->free == 1)) {
-        currentsize += checkalloc->offset;
+        currentsize = currentsize + checkalloc->offset;
         if (currentsize >= size) {
             return 1;
         }
@@ -93,9 +102,11 @@ int enlarge(void *ptr, size_t size) {
     return 0;
 }
 
+//user function
 void *malloc(size_t size) {
     void *addr;
     size_t fullsize = size + sizeof(struct allocation);
+    //rounded up so it is aligned on the boundary
     if (fullsize % BOUNDARY != 0) {
         fullsize = fullsize + (BOUNDARY - (fullsize % BOUNDARY));
     }
@@ -104,7 +115,6 @@ void *malloc(size_t size) {
             split(addr, fullsize);
             struct allocation *alloc = addr;
             alloc->free = 0;
-            //printalloc(addr, fullsize);
             return (char *)addr + sizeof(struct allocation);
         }
         if (testnext(fullsize)) {
@@ -113,19 +123,17 @@ void *malloc(size_t size) {
             alloc->free = 0;
             alloc->offset = (uint64_t)fullsize;
             next = (char *)next + alloc->offset;
-            //printalloc(addr, fullsize);
             return (char *)addr + sizeof(struct allocation);
         }
     }
     size_t sbrksize;
-    if (fullsize < 128) {
-        sbrksize = 128;
-    } else if (fullsize < 1024) {
-        sbrksize = 1024;
+    if (fullsize < 4096) {
+        sbrksize = 4096;
     } else {
-        sbrksize = fullsize;
+        sbrksize = fullsize + (4096 - (fullsize % 4096));
     }
     if ((addr = sbrk(sbrksize)) != (void *) -1) {
+        struct allocation *alloc;
         if (start == NULL) {
             start = (char *)addr;
         }
@@ -133,18 +141,16 @@ void *malloc(size_t size) {
             addr = (char *)next;
         }
         currentbrk = sbrk(0);
-        struct allocation *alloc = addr;
+        alloc = addr;
         alloc->free = 0;
         alloc->offset = (uint64_t)fullsize;
         next = (char *)addr + alloc->offset;
-        //printalloc(addr, fullsize);
         return (char *)addr + sizeof(struct allocation);
     } else {
         exit(1);
     }
 }
 
-//good
 void *calloc(size_t nmemb, size_t size) {
     if ((nmemb == 0) || (size == 0)) {
         return NULL;
@@ -171,10 +177,9 @@ void *realloc(void *ptr, size_t size) {
         split(allocpointer, fullsize);
         return ptr;
     }
+    void *addr = malloc(size);
     free(ptr);
-    //printuint(ptr, "realloc");
-    //printuint(fullsize, "realloc2");
-    return malloc(size);
+    return addr;
 }
 
 //based on code by dennis ritchie and brian kernighan
@@ -193,14 +198,15 @@ void itoa(uint64_t n, char s[]) {
     s[i] = '\0';
 }
 
+
 void printuint(void *val, char *s) {
     int fd = open("memory", O_CREAT|O_WRONLY|O_APPEND, 0777);
     char valstring[50];
-    char printstring[10];
+    char printstring[20];
     itoa((uint64_t)val, valstring);
     strcpy(printstring, s);
     strcat(printstring, valstring);
-    strcat(printstring, "\n");
+    strcat(printstring, ");\n");
     write(fd, printstring, strlen(printstring));
     if (close(fd) == -1) {
         exit(1);
