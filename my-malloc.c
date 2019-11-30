@@ -214,8 +214,3 @@ void printuint(void *val, char *s) {
         exit(1);
     }
 }
-
-void printalloc(void *ptr, size_t size) {
-    printuint(ptr, "malloc: ");
-    //printuint(size, "size: ");
-}
