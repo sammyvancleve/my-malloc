@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
@@ -13,7 +14,6 @@ static void *currentbrk;
 static void *next;
 
 static int testnext(size_t size);
-static int enlarge(void *ptr, size_t size);
 static void split(void *ptr, size_t size);
 static void *search(size_t size);
 static void printuint(void *val, char *s);
@@ -56,15 +56,18 @@ static void *search(size_t size) {
 //splits allocation into two if there is enough space for
 //a second allocation after an alloc of size is made
 static void split(void *ptr, size_t size) {
-    struct allocation *checkalloc = ptr;
+    if (size % ALIGNMENT != 0) {
+        size = size + (ALIGNMENT - (size % ALIGNMENT));
+    }
+    struct allocation *splitalloc = ptr;
     size_t minimumsize = sizeof(struct allocation) + ALIGNMENT;
-    if (checkalloc->offset >= size + minimumsize) {
-        uint64_t oldoffset = checkalloc->offset;
-        checkalloc->offset = size;
-        void *newaddr = (char *)ptr + checkalloc->offset;
+    if (splitalloc->offset >= size + minimumsize) {
+        uint64_t oldoffset = splitalloc->offset;
+        void *newaddr = (char *)ptr + size;
         struct allocation *newalloc = newaddr;
+        splitalloc->offset = size;
         newalloc->free = 1;
-        newalloc->offset = oldoffset - checkalloc->offset;
+        newalloc->offset = oldoffset - size;
     }
 }
 
@@ -76,28 +79,6 @@ void free(void *ptr) {
         struct allocation *alloc = allocaddr;
         alloc->free = 1;
     }
-}
-
-//non-user function
-//returns 1 if there are enough freed allocs following
-//the one given by ptr such that they may be combined
-//into one alloc size large
-//else returns 0
-static int enlarge(void *ptr, size_t size) {
-    size_t currentsize = size;
-    void *check = (void *)ptr;
-    struct allocation *checkalloc = check;
-    check = (char *)check + checkalloc->offset;
-    checkalloc = check;
-    while ((check < currentbrk) && (checkalloc->free == 1)) {
-        currentsize = currentsize + checkalloc->offset;
-        if (currentsize >= size) {
-            return 1;
-        }
-        check = (char *)check + checkalloc->offset;
-        checkalloc = check;
-    }
-    return 0;
 }
 
 //user function
@@ -171,16 +152,27 @@ void *realloc(void *ptr, size_t size) {
         free(ptr);
     }
     void *allocpointer = (char *)ptr - sizeof(struct allocation);
+    struct allocation *alloc = allocpointer;
+    struct allocation *useralloc = allocpointer;
     size_t fullsize = size + sizeof(struct allocation);
     if (fullsize % ALIGNMENT != 0) {
         fullsize = fullsize + (ALIGNMENT - (fullsize % ALIGNMENT));
     }
-    if (enlarge(allocpointer, fullsize)) {
-        split(allocpointer, fullsize);
-        return ptr;
+    size_t currentsize = 0;
+    alloc->free = 1;
+    while ((allocpointer < currentbrk) && (alloc->free == 1)) {
+        currentsize += alloc->offset;
+        if (currentsize >= fullsize) {
+            useralloc->free = 0;
+            useralloc->offset = currentsize;
+            return ptr;
+        }
+        allocpointer += alloc->offset;
+        alloc = allocpointer;
     }
     void *addr = malloc(size);
     free(ptr);
+    memcpy(addr, ptr, useralloc->offset);
     return addr;
 }
 
@@ -198,19 +190,4 @@ void itoa(uint64_t n, char s[]) {
         s[k] = reverses[k];
     }
     s[i] = '\0';
-}
-
-
-void printuint(void *val, char *s) {
-    int fd = open("memory", O_CREAT|O_WRONLY|O_APPEND, 0777);
-    char valstring[50];
-    char printstring[20];
-    itoa((uint64_t)val, valstring);
-    strcpy(printstring, s);
-    strcat(printstring, valstring);
-    strcat(printstring, ");\n");
-    write(fd, printstring, strlen(printstring));
-    if (close(fd) == -1) {
-        exit(1);
-    }
 }
