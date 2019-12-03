@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #define ALIGNMENT 16
+#define SBRK_MIN 4096
 
 static void *start;
 static void *currentbrk;
@@ -16,7 +17,6 @@ static void *next;
 static int testnext(size_t size);
 static void split(void *ptr, size_t size);
 static void *search(size_t size);
-static void printuint(void *val, char *s);
 
 //16 bytes long
 struct allocation {
@@ -36,17 +36,19 @@ static int testnext(size_t size) {
 }
 
 //non-user function
-//returns pointer to alloc with offset greater than
-//or equal to size
+//iterates through all previous allocs
+//until an alloc that is free and offset >= size
+//is found
+//if there is none, returns NULL
 static void *search(size_t size) {
-    void *check = (char *)start;
-    struct allocation *checkalloc;
-    while (check < currentbrk && check < next) {
-        checkalloc = check;
-        if (checkalloc->free == 1 && checkalloc->offset >= size) {
-            return check;
+    void *searchptr = (char *)start;
+    struct allocation *alloc;
+    while ((searchptr < currentbrk) && (searchptr < next)) {
+        alloc = searchptr;
+        if ((alloc->free == 1) && (alloc->offset >= size)) {
+            return searchptr;
         }
-        check = (char *)check + checkalloc->offset;
+        searchptr = (char *)searchptr + alloc->offset;
     }
     return NULL;
 }
@@ -109,11 +111,11 @@ void *malloc(size_t size) {
         }
     }
     size_t sbrksize;
-    if (fullsize < 4096) {
-        sbrksize = 4096;
+    if (fullsize < SBRK_MIN) {
+        sbrksize = SBRK_MIN;
     } else {
-        sbrksize = fullsize + (4096 - (fullsize % 4096));
-        sbrksize = sbrksize + 4096;
+        sbrksize = fullsize + (SBRK_MIN - (fullsize % SBRK_MIN));
+        sbrksize = sbrksize + SBRK_MIN;
     }
     if ((addr = sbrk(sbrksize)) != (void *) -1) {
         struct allocation *alloc;
@@ -151,43 +153,30 @@ void *realloc(void *ptr, size_t size) {
     } else if (size == 0) {
         free(ptr);
     }
-    void *allocpointer = (char *)ptr - sizeof(struct allocation);
-    struct allocation *alloc = allocpointer;
-    struct allocation *useralloc = allocpointer;
+
     size_t fullsize = size + sizeof(struct allocation);
     if (fullsize % ALIGNMENT != 0) {
         fullsize = fullsize + (ALIGNMENT - (fullsize % ALIGNMENT));
     }
+
+    void *allocpointer = (char *)ptr - sizeof(struct allocation);
+    struct allocation *originalalloc = allocpointer;
+    struct allocation *alloc = allocpointer;
+
     size_t currentsize = 0;
     alloc->free = 1;
     while ((allocpointer < currentbrk) && (alloc->free == 1)) {
         currentsize += alloc->offset;
         if (currentsize >= fullsize) {
-            useralloc->free = 0;
-            useralloc->offset = currentsize;
+            originalalloc->free = 0;
+            originalalloc->offset = currentsize;
             return ptr;
         }
-        allocpointer += alloc->offset;
+        allocpointer = (char *)allocpointer + alloc->offset;
         alloc = allocpointer;
     }
-    void *addr = malloc(size);
-    free(ptr);
-    memcpy(addr, ptr, useralloc->offset);
-    return addr;
-}
 
-//based on code by dennis ritchie and brian kernighan
-void itoa(uint64_t n, char s[]) {
-    uint64_t i = 0;
-    do {
-        s[i++] = n % 10 + '0';
-    } while ((n /= 10) > 0);
-    char reverses[strlen(s)];
-    for (int j = 0; j < i; j++) {
-        reverses[j] = s[i-1-j];
-    }
-    for (int k = 0; k < i; k++) {
-        s[k] = reverses[k];
-    }
-    s[i] = '\0';
+    void *addr = malloc(size);
+    memcpy(addr, ptr, originalalloc->offset);
+    return addr;
 }

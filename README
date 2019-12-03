@@ -1,15 +1,6 @@
 my-malloc
 by sammy and agastya
 
-featuring the itoa function, originally by
+--originally debugged with, not used anymore--
+the itoa function, originally by
 dennis ritchie and brian kernighan
-
-FEATURING
-===
-the amazing outstanding void star printing tool
-
-KNOWN BUGS
-====
-segfault when given ls -lR /usr/
-    for some 'mystery reason'
-
